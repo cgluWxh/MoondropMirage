@@ -13,6 +13,13 @@ dist/
 Packages/
 Package.resolved
 
+# Android / Gradle
+.gradle/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
 # Xcode
 DerivedData/
 build/
