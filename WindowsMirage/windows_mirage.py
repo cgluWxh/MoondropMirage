@@ -16,13 +16,13 @@ from protocol import parse_battery, parse_multipoint_device
 from winrt_transport import MirageTransport
 
 APP_DIR = Path(__file__).resolve().parent
-LOG_FILE = APP_DIR / "windows-mirage.log"
+# LOG_FILE = APP_DIR / "windows-mirage.log"
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     handlers=[
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        # logging.FileHandler(LOG_FILE, encoding="utf-8"),
         logging.StreamHandler(),
     ],
 )
@@ -110,7 +110,7 @@ class AsyncWorker:
 
     def window_closed(self) -> None:
         if self.transport:
-            self.loop.call_soon_threadsafe(self.transport.schedule_disconnect, 10.0)
+            self.loop.call_soon_threadsafe(self.transport.schedule_disconnect, 5.0)
 
     def shutdown(self) -> None:
         async def stop() -> None:
@@ -188,7 +188,7 @@ class MirageWindow:
         self.devices_frame.pack(fill="x", pady=8)
 
         ttk.Button(frame, text="刷新", command=self.refresh).pack(fill="x", side="bottom")
-        ttk.Label(frame, text=f"日志：{LOG_FILE.name}", foreground="#666666").pack(anchor="w", side="bottom", pady=8)
+        # ttk.Label(frame, text=f"日志：{LOG_FILE.name}", foreground="#666666").pack(anchor="w", side="bottom", pady=8)
 
     def show(self) -> None:
         self.root.deiconify()
