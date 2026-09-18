@@ -1,0 +1,11 @@
+Pillow>=10.0
+pystray>=0.19.5
+winrt-runtime==3.2.1
+winrt-Windows.Foundation==3.2.1
+winrt-Windows.Foundation.Collections==3.2.1
+winrt-Windows.Devices.Bluetooth==3.2.1
+winrt-Windows.Devices.Bluetooth.Rfcomm==3.2.1
+winrt-Windows.Devices.Enumeration==3.2.1
+winrt-Windows.Networking==3.2.1
+winrt-Windows.Networking.Sockets==3.2.1
+winrt-Windows.Storage.Streams==3.2.1
