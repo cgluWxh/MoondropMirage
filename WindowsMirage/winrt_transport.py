@@ -151,7 +151,7 @@ class MirageTransport:
             self.disconnect_task.cancel()
             self.disconnect_task = None
 
-    def schedule_disconnect(self, delay: float = 10.0) -> None:
+    def schedule_disconnect(self, delay: float = 5.0) -> None:
         self.cancel_scheduled_disconnect()
 
         async def delayed() -> None:
