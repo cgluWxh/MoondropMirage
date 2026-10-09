@@ -20,6 +20,39 @@
 4. 双击 `start.bat`。
 5. 程序启动后进入系统托盘；右键图标选择“打开控制面板”。
 
+## 一次性 CLI（不启动托盘或 Tkinter）
+
+在 Windows 中配对并连接耳机、安装依赖后，在此目录运行：
+
+```bat
+cli.bat --anc noise-cancelling
+cli.bat --anc adaptive
+cli.bat --anc wind-reduction
+cli.bat --anc transparency
+cli.bat --anc off
+cli.bat --multipoint on
+cli.bat --multipoint off
+cli.bat --anc transparency --multipoint on
+```
+
+也可以直接使用 `python mirage_cli.py` 加相同参数。`--help` 查看帮助，`--timeout 60` 设置连接和操作（包括初始化）的总超时秒数（默认 45），`--verbose` 显示协议日志及各阶段耗时。
+
+### Windows 连接速度优化
+
+默认只枚举已配对设备；SPP 服务优先读取 Windows 缓存，缓存未命中才执行无缓存发现。首次发现或 Windows 蓝牙栈响应慢时仍可能需要较长时间，默认超时提高并不代表操作会固定等待 45 秒。
+
+如果设备枚举较慢，可显式指定耳机蓝牙地址来跳过枚举（替换下面的示例地址）：
+
+```bat
+cli.bat --address AA:BB:CC:DD:EE:FF --anc transparency --verbose
+```
+
+先运行 `cli.bat --anc off --verbose`，日志会显示真实地址，以及设备枚举、打开 BluetoothDevice、SPP 查询和 RFCOMM 连接分别花了多少秒。指定地址只能跳过枚举；如果慢在 Windows 打开设备或建立连接，仍需要进一步排查蓝牙栈。
+
+每次执行仅建立临时 RFCOMM 控制连接，发送指定设置后立即释放并退出，不启动后台常驻程序，不断开 Windows 的耳机音频连接。发送后保留与 GUI 一致的 0.3 秒处理时间；成功表示指令已发送，不代表已读取设备状态确认。至少需要指定一个设置；退出码：成功 `0`，操作失败 `1`，参数错误 `2`，取消 `130`。同时设置时先调整 ANC，再调整双设备开关，失败不会回滚已发送的设置。
+
+建议先退出托盘控制器，避免两个程序同时占用 RFCOMM。蓝牙实际切换效果仍需 Windows 真机验证。
+
 ## 反馈测试结果
 
 如果运行失败，请把以下内容发回来：

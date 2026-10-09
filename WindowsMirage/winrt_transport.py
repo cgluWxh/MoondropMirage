@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from time import perf_counter
 from collections.abc import Callable
+from contextlib import suppress
 
 from protocol import GaiaFrameParser, GaiaPDU, make_pdu, wrap_v4
 
@@ -35,13 +37,25 @@ class MirageTransport:
         self.request_lock = asyncio.Lock()
         self.disconnect_task: asyncio.Task | None = None
 
-    async def initialize(self) -> None:
-        selector = BluetoothDevice.get_device_selector_from_device_name(DEVICE_NAME)
-        devices = await DeviceInformation.find_all_async_aqs_filter(selector)
-        if not devices:
-            raise RuntimeError(f"找不到已配对设备 {DEVICE_NAME}，请先在 Windows 设置中配对")
-
-        self.device = await BluetoothDevice.from_id_async(devices[0].id)
+    async def initialize(self, address: int | None = None) -> None:
+        if self.device is not None:
+            return
+        started = perf_counter()
+        if address is None:
+            LOG.info("枚举已配对的蓝牙设备…")
+            selector = BluetoothDevice.get_device_selector_from_pairing_state(True)
+            devices = await DeviceInformation.find_all_async_aqs_filter(selector)
+            matches = [device for device in devices if device.name == DEVICE_NAME]
+            LOG.info("已配对设备枚举耗时 %.2f 秒", perf_counter() - started)
+            if not matches:
+                raise RuntimeError(f"找不到已配对设备 {DEVICE_NAME}，请先在 Windows 设置中配对")
+            started = perf_counter()
+            LOG.info("打开 BluetoothDevice…")
+            self.device = await BluetoothDevice.from_id_async(matches[0].id)
+        else:
+            LOG.info("按地址 %012X 打开 BluetoothDevice（跳过枚举）…", address)
+            self.device = await BluetoothDevice.from_bluetooth_address_async(address)
+        LOG.info("打开 BluetoothDevice 耗时 %.2f 秒", perf_counter() - started)
         if self.device is None:
             raise RuntimeError("Windows 无法打开该 BluetoothDevice")
         self.connection_token = self.device.add_connection_status_changed(
@@ -70,22 +84,37 @@ class MirageTransport:
         if self.device is None:
             await self.initialize()
 
-        LOG.info("查询 Serial Port/SPP 服务…")
+        if self.device is None:
+            raise RuntimeError("蓝牙设备尚未初始化")
+        started = perf_counter()
+        LOG.info("查询缓存的 Serial Port/SPP 服务…")
         result = await self.device.get_rfcomm_services_for_id_with_cache_mode_async(
-            RfcommServiceId.serial_port, BluetoothCacheMode.UNCACHED
+            RfcommServiceId.serial_port, BluetoothCacheMode.CACHED
         )
         services = list(result.services)
+        LOG.info("SPP 缓存查询耗时 %.2f 秒", perf_counter() - started)
+        if not services:
+            started = perf_counter()
+            LOG.info("缓存未命中，重新发现 SPP 服务…")
+            result = await self.device.get_rfcomm_services_for_id_with_cache_mode_async(
+                RfcommServiceId.serial_port, BluetoothCacheMode.UNCACHED
+            )
+            services = list(result.services)
+            LOG.info("SPP 服务发现耗时 %.2f 秒", perf_counter() - started)
         if not services:
             raise RuntimeError("设备没有返回标准 SPP/RFCOMM 服务")
 
         service = services[0]
         socket = StreamSocket()
+        started = perf_counter()
+        LOG.info("建立 RFCOMM 连接…")
         try:
             await socket.connect_async(
                 service.connection_host_name,
                 service.connection_service_name,
             )
-        except Exception:
+        except BaseException:
+            # Also release local WinRT resources when a CLI timeout cancels connect.
             socket.close()
             service.close()
             raise
@@ -96,7 +125,7 @@ class MirageTransport:
         self.writer = DataWriter(socket.output_stream)
         self.parser.clear()
         service.close()
-        LOG.info("RFCOMM 已连接")
+        LOG.info("RFCOMM 已连接，耗时 %.2f 秒", perf_counter() - started)
 
     async def request(
         self,
@@ -107,6 +136,8 @@ class MirageTransport:
     ) -> GaiaPDU:
         async with self.request_lock:
             await self.connect_rfcomm()
+            if self.writer is None or self.reader is None:
+                raise ConnectionError("RFCOMM 数据流尚未建立")
             frame = wrap_v4(make_pdu(feature, command, payload))
             LOG.info("TX %s", frame.hex(" ").upper())
             self.writer.write_bytes(frame)
@@ -141,6 +172,8 @@ class MirageTransport:
     async def send(self, feature: int, command: int, payload: bytes) -> None:
         async with self.request_lock:
             await self.connect_rfcomm()
+            if self.writer is None:
+                raise ConnectionError("RFCOMM 输出流尚未建立")
             frame = wrap_v4(make_pdu(feature, command, payload))
             LOG.info("TX %s", frame.hex(" ").upper())
             self.writer.write_bytes(frame)
@@ -171,16 +204,12 @@ class MirageTransport:
         else:
             self.disconnect_task = None
         if self.writer is not None:
-            try:
+            with suppress(Exception):
                 self.writer.detach_stream()
-            except Exception:
-                pass
             self.writer.close()
         if self.reader is not None:
-            try:
+            with suppress(Exception):
                 self.reader.detach_stream()
-            except Exception:
-                pass
             self.reader.close()
         if self.socket is not None:
             self.socket.close()
